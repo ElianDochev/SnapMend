@@ -33,12 +33,21 @@ export class AnalysisService {
       transcript,
       image: input.image,
     });
+    const productRecommendations =
+      await this.openAiRepairService.searchProducts({
+        title,
+        description,
+        transcript,
+        image: input.image,
+        repairPlan: generatedPlan,
+      });
     const repairCase: RepairCase = {
       id: randomUUID(),
       createdAt: timestamp,
       title,
       description,
       transcript,
+      issueEvidence: generatedPlan.issueEvidence,
       inputSummary: {
         imageProvided: imagePresent,
         audioProvided: audioPresent,
@@ -49,6 +58,7 @@ export class AnalysisService {
       materials: generatedPlan.materials,
       costEstimate: generatedPlan.costEstimate,
       nextAction: generatedPlan.nextAction,
+      productRecommendations: productRecommendations.productRecommendations,
     };
 
     return this.casesService.save(repairCase);

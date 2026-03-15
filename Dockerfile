@@ -19,5 +19,6 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/api ./api
 COPY --from=build /app/client ./client
+COPY --from=build /app/test-scenerio ./test-scenerio
 EXPOSE 3000
 CMD ["bun", "run", "--cwd", "api", "start"]

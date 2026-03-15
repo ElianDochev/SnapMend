@@ -31,8 +31,14 @@ Analysis now uses OpenAI for:
 
 - voice transcription when an audio file is uploaded
 - repair-plan generation from the title, optional description, optional transcript, and optional image
+- product lookup through OpenAI web search so the response can include hardware links
 
 The backend fails fast on startup if required OpenAI environment variables are missing, with an explanation of what is missing and why it is needed.
+
+Each repair result now also includes:
+
+- evidence grounded in the image, text prompt, and optional voice transcript
+- product recommendations with store links when the repair needs tools or replacement parts
 
 ## Local commands
 
@@ -44,6 +50,17 @@ bun run format
 bun run test
 ```
 
+## Required environment variables
+
+```bash
+OPENAI_API_KEY
+OPENAI_ANALYSIS_MODEL
+OPENAI_PRODUCT_SEARCH_MODEL
+OPENAI_TRANSCRIPTION_MODEL
+```
+
+If any of these are missing, the backend exits at startup and explains which capability is blocked.
+
 ## Docker
 
 ```bash
@@ -51,3 +68,29 @@ docker compose up --build
 ```
 
 The app is served from `http://localhost:3000`, and the API is available under `http://localhost:3000/api`.
+
+## Real scenario test
+
+The repository contains a live multimodal test case in `test-scenerio/`:
+
+- `test-image.jpg`
+- `test-user-prompt.txt`
+- `user-prompt-voice.m4a`
+
+This test is intended to run with real OpenAI credentials inside the container after the app image is built.
+
+Run it inside the container:
+
+```bash
+docker compose run --rm app bun real-test
+```
+
+The script loads the scenario assets, sends them through the real backend analysis flow, and validates that the result:
+
+- identifies the cabinet hinge issue
+- mentions the missing screw
+- recommends a Phillips screwdriver
+- suggests looking for the missing screw before buying a replacement
+- returns product links for the screwdriver and screw
+
+The command prints the full JSON result and exits non-zero if the validation fails.

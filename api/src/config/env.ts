@@ -6,6 +6,7 @@ export type AppEnv = {
   PORT: number;
   OPENAI_API_KEY: string;
   OPENAI_ANALYSIS_MODEL: string;
+  OPENAI_PRODUCT_SEARCH_MODEL: string;
   OPENAI_TRANSCRIPTION_MODEL: string;
 };
 
@@ -51,6 +52,12 @@ export function getAppEnv(): AppEnv {
     );
   }
 
+  if (!process.env.OPENAI_PRODUCT_SEARCH_MODEL?.trim()) {
+    missing.push(
+      'OPENAI_PRODUCT_SEARCH_MODEL is required so SnapMend can search the web for product suggestions.',
+    );
+  }
+
   if (missing.length > 0) {
     throw new Error(
       `SnapMend cannot start because required environment variables are missing:\n- ${missing.join(
@@ -63,6 +70,7 @@ export function getAppEnv(): AppEnv {
     PORT: Number.parseInt(process.env.PORT ?? '3000', 10),
     OPENAI_API_KEY: process.env.OPENAI_API_KEY!,
     OPENAI_ANALYSIS_MODEL: process.env.OPENAI_ANALYSIS_MODEL!,
+    OPENAI_PRODUCT_SEARCH_MODEL: process.env.OPENAI_PRODUCT_SEARCH_MODEL!,
     OPENAI_TRANSCRIPTION_MODEL: process.env.OPENAI_TRANSCRIPTION_MODEL!,
   };
 

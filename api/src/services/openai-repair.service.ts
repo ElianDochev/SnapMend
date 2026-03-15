@@ -8,7 +8,11 @@ import type { ResponseInputContent } from 'openai/resources/responses/responses'
 import { z } from 'zod';
 import type { AppEnv } from '../config/env';
 import { getAppEnv } from '../config/env';
-import type { GeneratedRepairPlan } from '../types/openai-analysis';
+import type {
+  GeneratedProductRecommendations,
+  GeneratedRepairPlan,
+} from '../types/openai-analysis';
+import type { JsonSchema } from '../types/json-schema';
 
 type AnalyzeWithOpenAiInput = {
   title: string;
@@ -18,6 +22,11 @@ type AnalyzeWithOpenAiInput = {
 };
 
 const repairPlanSchema = z.object({
+  issueEvidence: z.object({
+    fromImage: z.string().min(1),
+    fromUserDescription: z.string().min(1),
+    fromVoiceTranscript: z.string().min(1).optional(),
+  }),
   diagnosis: z.string().min(1),
   safetyWarning: z.string().min(1),
   steps: z.array(z.string().min(1)).min(1),
@@ -25,6 +34,103 @@ const repairPlanSchema = z.object({
   costEstimate: z.string().min(1),
   nextAction: z.string().min(1),
 });
+
+const productRecommendationsSchema = z.object({
+  productRecommendations: z
+    .array(
+      z.object({
+        item: z.string().min(1),
+        whyItIsNeeded: z.string().min(1),
+        searchSummary: z.string().min(1),
+        options: z
+          .array(
+            z.object({
+              title: z.string().min(1),
+              storeName: z.string().min(1),
+              productUrl: z.string().url(),
+            }),
+          )
+          .min(1),
+      }),
+    )
+    .min(2),
+});
+
+const repairPlanJsonSchema: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'issueEvidence',
+    'diagnosis',
+    'safetyWarning',
+    'steps',
+    'materials',
+    'costEstimate',
+    'nextAction',
+  ],
+  properties: {
+    issueEvidence: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['fromImage', 'fromUserDescription'],
+      properties: {
+        fromImage: { type: 'string', minLength: 1 },
+        fromUserDescription: { type: 'string', minLength: 1 },
+        fromVoiceTranscript: { type: 'string', minLength: 1 },
+      },
+    },
+    diagnosis: { type: 'string', minLength: 1 },
+    safetyWarning: { type: 'string', minLength: 1 },
+    steps: {
+      type: 'array',
+      minItems: 1,
+      items: { type: 'string', minLength: 1 },
+    },
+    materials: {
+      type: 'array',
+      minItems: 1,
+      items: { type: 'string', minLength: 1 },
+    },
+    costEstimate: { type: 'string', minLength: 1 },
+    nextAction: { type: 'string', minLength: 1 },
+  },
+};
+
+const productRecommendationsJsonSchema: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['productRecommendations'],
+  properties: {
+    productRecommendations: {
+      type: 'array',
+      minItems: 2,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['item', 'whyItIsNeeded', 'searchSummary', 'options'],
+        properties: {
+          item: { type: 'string', minLength: 1 },
+          whyItIsNeeded: { type: 'string', minLength: 1 },
+          searchSummary: { type: 'string', minLength: 1 },
+          options: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['title', 'storeName', 'productUrl'],
+              properties: {
+                title: { type: 'string', minLength: 1 },
+                storeName: { type: 'string', minLength: 1 },
+                productUrl: { type: 'string', minLength: 1 },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
 
 @Injectable()
 export class OpenAiRepairService {
@@ -89,6 +195,14 @@ export class OpenAiRepairService {
 
       const response = await this.client.responses.create({
         model: this.env.OPENAI_ANALYSIS_MODEL,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'repair_plan',
+            strict: true,
+            schema: repairPlanJsonSchema,
+          },
+        },
         input: [
           {
             role: 'system',
@@ -97,10 +211,13 @@ export class OpenAiRepairService {
                 type: 'input_text',
                 text: [
                   'You are SnapMend, a careful home repair assistant.',
+                  'Diagnose household repair problems from the image plus any text and transcript.',
+                  'Be explicit about what evidence comes from the image versus what comes from the user description or transcript.',
+                  'If the issue is a loose hinge, missing screw, stripped cabinet mounting point, or misaligned cabinet hardware, say so directly.',
                   'Produce concise and practical guidance for a homeowner.',
                   'Mention safety risks clearly.',
-                  'Return JSON with keys: diagnosis, safetyWarning, steps, materials, costEstimate, nextAction.',
-                  'Do not wrap the JSON in markdown.',
+                  'If a screwdriver is needed, name the likely screwdriver type.',
+                  'Return only JSON that matches the provided schema.',
                 ].join(' '),
               },
             ],
@@ -118,6 +235,75 @@ export class OpenAiRepairService {
       this.logger.error('OpenAI repair analysis failed.', error);
       throw new InternalServerErrorException(
         'SnapMend could not generate a repair plan with OpenAI.',
+      );
+    }
+  }
+
+  async searchProducts(
+    input: AnalyzeWithOpenAiInput & {
+      repairPlan: GeneratedRepairPlan;
+    },
+  ): Promise<GeneratedProductRecommendations> {
+    try {
+      const response = await this.client.responses.create({
+        model: this.env.OPENAI_PRODUCT_SEARCH_MODEL,
+        tools: [{ type: 'web_search' }],
+        tool_choice: 'auto',
+        include: ['web_search_call.action.sources'],
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'product_recommendations',
+            strict: true,
+            schema: productRecommendationsJsonSchema,
+          },
+        },
+        input: [
+          {
+            role: 'system',
+            content: [
+              {
+                type: 'input_text',
+                text: [
+                  'You are SnapMend product lookup.',
+                  'Use web search to find practical products that directly support the repair plan.',
+                  'Return at least one recommendation for the screwdriver and one recommendation for the replacement screw or cabinet-hinge mounting screw when relevant.',
+                  'Prefer reputable hardware or home-improvement stores.',
+                  'Every option must include a directly usable product URL.',
+                  'Do not invent products or URLs.',
+                  'Return only JSON matching the provided schema.',
+                ].join(' '),
+              },
+            ],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: [
+                  `Repair title: ${input.title}`,
+                  `Description: ${input.description ?? 'No written description provided.'}`,
+                  `Transcript: ${input.transcript ?? 'No voice transcript provided.'}`,
+                  `Diagnosis: ${input.repairPlan.diagnosis}`,
+                  `Key materials: ${input.repairPlan.materials.join(', ')}`,
+                  `Key steps: ${input.repairPlan.steps.join(' | ')}`,
+                  'Find purchase links only for the tools and small parts actually needed to do this repair.',
+                ].join('\n'),
+              },
+            ],
+          },
+        ],
+      });
+
+      const parsed = productRecommendationsSchema.parse(
+        JSON.parse(response.output_text),
+      );
+      return parsed;
+    } catch (error) {
+      this.logger.error('OpenAI product search failed.', error);
+      throw new InternalServerErrorException(
+        'SnapMend could not search the web for repair products with OpenAI.',
       );
     }
   }

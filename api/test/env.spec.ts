@@ -7,6 +7,7 @@ describe('environment validation', () => {
     process.env = { ...originalEnv };
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_ANALYSIS_MODEL;
+    delete process.env.OPENAI_PRODUCT_SEARCH_MODEL;
     delete process.env.OPENAI_TRANSCRIPTION_MODEL;
     resetAppEnvForTests();
   });
@@ -25,11 +26,13 @@ describe('environment validation', () => {
   it('returns validated env when all required variables exist', () => {
     process.env.OPENAI_API_KEY = 'test-key';
     process.env.OPENAI_ANALYSIS_MODEL = 'analysis-model';
+    process.env.OPENAI_PRODUCT_SEARCH_MODEL = 'search-model';
     process.env.OPENAI_TRANSCRIPTION_MODEL = 'transcription-model';
 
     expect(getAppEnv()).toMatchObject({
       OPENAI_API_KEY: 'test-key',
       OPENAI_ANALYSIS_MODEL: 'analysis-model',
+      OPENAI_PRODUCT_SEARCH_MODEL: 'search-model',
       OPENAI_TRANSCRIPTION_MODEL: 'transcription-model',
       PORT: 3000,
     });
