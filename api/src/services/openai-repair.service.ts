@@ -21,11 +21,13 @@ type AnalyzeWithOpenAiInput = {
   image?: Express.Multer.File;
 };
 
+const PRODUCT_SEARCH_TIMEOUT_MS = 25_000;
+
 const repairPlanSchema = z.object({
   issueEvidence: z.object({
     fromImage: z.string().min(1),
     fromUserDescription: z.string().min(1),
-    fromVoiceTranscript: z.string().min(1).optional(),
+    fromVoiceTranscript: z.string().min(1).nullable().optional(),
   }),
   diagnosis: z.string().min(1),
   safetyWarning: z.string().min(1),
@@ -72,11 +74,11 @@ const repairPlanJsonSchema: JsonSchema = {
     issueEvidence: {
       type: 'object',
       additionalProperties: false,
-      required: ['fromImage', 'fromUserDescription'],
+      required: ['fromImage', 'fromUserDescription', 'fromVoiceTranscript'],
       properties: {
         fromImage: { type: 'string', minLength: 1 },
         fromUserDescription: { type: 'string', minLength: 1 },
-        fromVoiceTranscript: { type: 'string', minLength: 1 },
+        fromVoiceTranscript: { type: ['string', 'null'] },
       },
     },
     diagnosis: { type: 'string', minLength: 1 },
@@ -138,10 +140,33 @@ export class OpenAiRepairService {
   private readonly env: AppEnv;
   private readonly client: OpenAI;
 
+  private withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    errorMessage: string,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(errorMessage));
+      }, timeoutMs);
+
+      promise
+        .then((value) => {
+          clearTimeout(timeoutId);
+          resolve(value);
+        })
+        .catch((error: unknown) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+    });
+  }
+
   constructor() {
     this.env = getAppEnv();
     this.client = new OpenAI({
       apiKey: this.env.OPENAI_API_KEY,
+      timeout: 120_000, // 2 minutes max per call
     });
   }
 
@@ -172,6 +197,7 @@ export class OpenAiRepairService {
   async generateRepairPlan(
     input: AnalyzeWithOpenAiInput,
   ): Promise<GeneratedRepairPlan> {
+    this.logger.log('generateRepairPlan: calling OpenAI...');
     try {
       const userContent: ResponseInputContent[] = [
         {
@@ -229,7 +255,9 @@ export class OpenAiRepairService {
         ],
       });
 
+      this.logger.log('generateRepairPlan: received response, parsing...');
       const parsed = repairPlanSchema.parse(JSON.parse(response.output_text));
+      this.logger.log('generateRepairPlan: done.');
       return parsed;
     } catch (error) {
       this.logger.error('OpenAI repair analysis failed.', error);
@@ -244,67 +272,80 @@ export class OpenAiRepairService {
       repairPlan: GeneratedRepairPlan;
     },
   ): Promise<GeneratedProductRecommendations> {
+    this.logger.log('searchProducts: calling OpenAI...');
+    const startedAt = Date.now();
     try {
-      const response = await this.client.responses.create({
-        model: this.env.OPENAI_PRODUCT_SEARCH_MODEL,
-        tools: [{ type: 'web_search' }],
-        tool_choice: 'auto',
-        include: ['web_search_call.action.sources'],
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'product_recommendations',
-            strict: true,
-            schema: productRecommendationsJsonSchema,
+      const response = await this.withTimeout(
+        this.client.responses.create({
+          model: this.env.OPENAI_PRODUCT_SEARCH_MODEL,
+          tools: [{ type: 'web_search' }],
+          tool_choice: 'auto',
+          include: ['web_search_call.action.sources'],
+          text: {
+            format: {
+              type: 'json_schema',
+              name: 'product_recommendations',
+              strict: true,
+              schema: productRecommendationsJsonSchema,
+            },
           },
-        },
-        input: [
-          {
-            role: 'system',
-            content: [
-              {
-                type: 'input_text',
-                text: [
-                  'You are SnapMend product lookup.',
-                  'Use web search to find practical products that directly support the repair plan.',
-                  'Return at least one recommendation for the screwdriver and one recommendation for the replacement screw or cabinet-hinge mounting screw when relevant.',
-                  'Prefer reputable hardware or home-improvement stores.',
-                  'Every option must include a directly usable product URL.',
-                  'Do not invent products or URLs.',
-                  'Return only JSON matching the provided schema.',
-                ].join(' '),
-              },
-            ],
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_text',
-                text: [
-                  `Repair title: ${input.title}`,
-                  `Description: ${input.description ?? 'No written description provided.'}`,
-                  `Transcript: ${input.transcript ?? 'No voice transcript provided.'}`,
-                  `Diagnosis: ${input.repairPlan.diagnosis}`,
-                  `Key materials: ${input.repairPlan.materials.join(', ')}`,
-                  `Key steps: ${input.repairPlan.steps.join(' | ')}`,
-                  'Find purchase links only for the tools and small parts actually needed to do this repair.',
-                ].join('\n'),
-              },
-            ],
-          },
-        ],
-      });
+          input: [
+            {
+              role: 'system',
+              content: [
+                {
+                  type: 'input_text',
+                  text: [
+                    'You are SnapMend product lookup.',
+                    'Use web search to find practical products that directly support the repair plan.',
+                    'Return at least one recommendation for the screwdriver and one recommendation for the replacement screw or cabinet-hinge mounting screw when relevant.',
+                    'Prefer reputable hardware or home-improvement stores.',
+                    'Every option must include a directly usable product URL.',
+                    'Do not invent products or URLs.',
+                    'Return only JSON matching the provided schema.',
+                  ].join(' '),
+                },
+              ],
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'input_text',
+                  text: [
+                    `Repair title: ${input.title}`,
+                    `Description: ${input.description ?? 'No written description provided.'}`,
+                    `Transcript: ${input.transcript ?? 'No voice transcript provided.'}`,
+                    `Diagnosis: ${input.repairPlan.diagnosis}`,
+                    `Key materials: ${input.repairPlan.materials.join(', ')}`,
+                    `Key steps: ${input.repairPlan.steps.join(' | ')}`,
+                    'Find purchase links only for the tools and small parts actually needed to do this repair.',
+                  ].join('\n'),
+                },
+              ],
+            },
+          ],
+        }),
+        PRODUCT_SEARCH_TIMEOUT_MS,
+        `OpenAI product search timed out after ${PRODUCT_SEARCH_TIMEOUT_MS} ms.`,
+      );
 
+      this.logger.log(
+        `searchProducts: received response after ${Date.now() - startedAt} ms, parsing...`,
+      );
       const parsed = productRecommendationsSchema.parse(
         JSON.parse(response.output_text),
       );
+      this.logger.log(
+        `searchProducts: done after ${Date.now() - startedAt} ms.`,
+      );
       return parsed;
     } catch (error) {
-      this.logger.error('OpenAI product search failed.', error);
-      throw new InternalServerErrorException(
-        'SnapMend could not search the web for repair products with OpenAI.',
+      this.logger.warn(
+        `searchProducts: continuing without product recommendations after ${Date.now() - startedAt} ms.`,
       );
+      this.logger.error('OpenAI product search failed.', error);
+      return { productRecommendations: [] };
     }
   }
 }

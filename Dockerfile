@@ -6,7 +6,7 @@ COPY package.json ./
 COPY bun.lock ./bun.lock
 COPY api/package.json api/package.json
 COPY client/package.json client/package.json
-RUN bun install --frozen-lockfile
+RUN bun install
 
 FROM deps AS build
 COPY . .

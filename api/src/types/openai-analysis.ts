@@ -4,7 +4,7 @@ export type GeneratedRepairPlan = {
   issueEvidence: {
     fromImage: string;
     fromUserDescription: string;
-    fromVoiceTranscript?: string;
+    fromVoiceTranscript?: string | null;
   };
   diagnosis: string;
   safetyWarning: string;

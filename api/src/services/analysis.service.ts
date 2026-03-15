@@ -47,7 +47,10 @@ export class AnalysisService {
       title,
       description,
       transcript,
-      issueEvidence: generatedPlan.issueEvidence,
+      issueEvidence: {
+        ...generatedPlan.issueEvidence,
+        fromVoiceTranscript: generatedPlan.issueEvidence.fromVoiceTranscript ?? undefined,
+      },
       inputSummary: {
         imageProvided: imagePresent,
         audioProvided: audioPresent,
