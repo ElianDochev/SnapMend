@@ -1,15 +1,29 @@
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { AnalyzePage } from './pages/AnalyzePage';
+import { CasesPage } from './pages/CasesPage';
+import { CaseDetailPage } from './pages/CaseDetailPage';
+
 export function App() {
   return (
-    <main className="app-shell">
-      <section className="hero-card">
-        <span className="eyebrow">SnapMend</span>
-        <h1>AI-guided home repair, from one photo and one voice note.</h1>
-        <p>
-          Frontend scaffolding is in place. The Nest backend is available at
-          <code>/api</code> and will later power upload, analysis, and repair
-          history.
-        </p>
-      </section>
-    </main>
+    <BrowserRouter>
+      <div className="app-shell">
+        <header className="app-header">
+          <Link to="/" className="app-logo">
+            <span className="eyebrow">SnapMend</span>
+          </Link>
+          <nav className="app-nav">
+            <Link to="/" className="nav-link">New Analysis</Link>
+            <Link to="/cases" className="nav-link">History</Link>
+          </nav>
+        </header>
+        <main className="app-main">
+          <Routes>
+            <Route path="/" element={<AnalyzePage />} />
+            <Route path="/cases" element={<CasesPage />} />
+            <Route path="/cases/:id" element={<CaseDetailPage />} />
+          </Routes>
+        </main>
+      </div>
+    </BrowserRouter>
   );
 }
