@@ -8,6 +8,7 @@ export type AppEnv = {
   OPENAI_ANALYSIS_MODEL: string;
   OPENAI_PRODUCT_SEARCH_MODEL: string;
   OPENAI_TRANSCRIPTION_MODEL: string;
+  SKIP_OPENAI_API_KEY_CHECK: boolean;
 };
 
 let cachedEnv: AppEnv | null = null;
@@ -33,8 +34,10 @@ export function getAppEnv(): AppEnv {
   loadDotenvFiles();
 
   const missing: string[] = [];
+  const skipOpenAiApiKeyCheck =
+    process.env.SKIP_OPENAI_API_KEY_CHECK?.trim().toLowerCase() === 'true';
 
-  if (!process.env.OPENAI_API_KEY?.trim()) {
+  if (!skipOpenAiApiKeyCheck && !process.env.OPENAI_API_KEY?.trim()) {
     missing.push(
       'OPENAI_API_KEY is required so the backend can authenticate with OpenAI.',
     );
@@ -68,10 +71,11 @@ export function getAppEnv(): AppEnv {
 
   cachedEnv = {
     PORT: Number.parseInt(process.env.PORT ?? '3000', 10),
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY!,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
     OPENAI_ANALYSIS_MODEL: process.env.OPENAI_ANALYSIS_MODEL!,
     OPENAI_PRODUCT_SEARCH_MODEL: process.env.OPENAI_PRODUCT_SEARCH_MODEL!,
     OPENAI_TRANSCRIPTION_MODEL: process.env.OPENAI_TRANSCRIPTION_MODEL!,
+    SKIP_OPENAI_API_KEY_CHECK: skipOpenAiApiKeyCheck,
   };
 
   return cachedEnv;

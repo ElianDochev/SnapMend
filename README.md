@@ -53,13 +53,18 @@ bun run test
 ## Required environment variables
 
 ```bash
+SKIP_OPENAI_API_KEY_CHECK
 OPENAI_API_KEY
 OPENAI_ANALYSIS_MODEL
 OPENAI_PRODUCT_SEARCH_MODEL
 OPENAI_TRANSCRIPTION_MODEL
 ```
 
-If any of these are missing, the backend exits at startup and explains which capability is blocked.
+`SKIP_OPENAI_API_KEY_CHECK` defaults to `false`. When it is `false`, the backend exits at startup if `OPENAI_API_KEY` is missing. When it is `true`, the startup check for `OPENAI_API_KEY` is skipped.
+
+This bypass is only useful for local scaffolding or frontend work where you want the app to boot without a real key. It does not make OpenAI-backed endpoints usable without credentials.
+
+The model environment variables are still required even when the API-key check is skipped, because the backend still needs a complete runtime configuration.
 
 ## Docker
 
