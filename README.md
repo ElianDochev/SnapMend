@@ -27,7 +27,12 @@ The initial backend includes:
 - `GET /api/cases`
 - `GET /api/cases/:id`
 
-For now, analysis is backed by a deterministic demo service so the backend is testable and runnable before the OpenAI integration is added.
+Analysis now uses OpenAI for:
+
+- voice transcription when an audio file is uploaded
+- repair-plan generation from the title, optional description, optional transcript, and optional image
+
+The backend fails fast on startup if required OpenAI environment variables are missing, with an explanation of what is missing and why it is needed.
 
 ## Local commands
 

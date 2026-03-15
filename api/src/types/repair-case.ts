@@ -3,6 +3,7 @@ export type RepairCase = {
   createdAt: string;
   title: string;
   description?: string;
+  transcript?: string;
   inputSummary: {
     imageProvided: boolean;
     audioProvided: boolean;

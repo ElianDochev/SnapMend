@@ -26,10 +26,10 @@ export class AnalyzeController {
       { name: 'audio', maxCount: 1 },
     ]),
   )
-  analyze(
+  async analyze(
     @Body() body: AnalyzeRequestDto,
     @UploadedFiles() files: UploadedFieldMap,
-  ): RepairCase {
+  ): Promise<RepairCase> {
     return this.analysisService.analyze({
       title: body.title,
       description: body.description,

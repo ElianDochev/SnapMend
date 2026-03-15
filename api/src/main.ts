@@ -6,9 +6,11 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { join } from 'node:path';
+import { getAppEnv } from './config/env';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
+  const env = getAppEnv();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const clientDistPath = join(process.cwd(), '..', 'client', 'dist');
 
@@ -32,8 +34,7 @@ async function bootstrap(): Promise<void> {
     res.sendFile(join(clientDistPath, 'index.html'));
   });
 
-  const port = Number.parseInt(process.env.PORT ?? '3000', 10);
-  await app.listen(port);
+  await app.listen(env.PORT);
 }
 
 void bootstrap();
